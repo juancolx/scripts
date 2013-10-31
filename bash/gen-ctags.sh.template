@@ -1,0 +1,130 @@
+#!/bin/bash
+
+###############################################################################
+# The MIT License (MIT)
+# 
+# Copyright (c) 2013 Juan A. Colmenares
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+###############################################################################
+
+
+###############################################################################
+# This is a template of a BASH script that generates ctags for VIM. 
+#
+# It creates a local tag file in each directory containing only the tags for 
+# source files in that directory, in addition to one single global tag file 
+# present in the root directory of your hierarchy, containing all non-static 
+# tags present in all source files in the hierarchy.
+# 
+# This is similar to the Approach 3 described in "How should I set up tag files 
+# for a multi-level directory hierarchy?" of the Exuberant Ctags FAQ 
+# (http://ctags.sourceforge.net/faq.html). 
+#
+# How to use this file:
+#     Create a copy of this file and personalize it, especially the 'IGNORE'
+#     variable and the ctags command line.
+# 
+# Author: Juan A. Colmenares <juancol@eecs.berkeley.edu>
+#
+# Creation Date: 13 October 2011.
+#
+###############################################################################
+
+
+# Maximum number of arguments to be passed to the script.
+MAX_ARGS=1
+
+# Error code: Wrong number of arguments passed to script.
+E_BADARGS=85   
+
+if [ $# -gt "$MAX_ARGS" ]
+then
+  echo "Usage: `basename $0` [-del]"
+  exit $E_BADARGS
+fi
+
+PARENT_DIR=$(pwd)
+#echo PARENT_DIR = $PARENT_DIR
+
+if [ "$1" = '-del' ] 
+then
+  find . -name "tags" -type f -exec rm '{}' \;
+  echo "Deleted 'tags' files recursively from directory: ${PARENT_DIR}"
+  exit 0
+fi
+
+
+# Check if the command ctags is available. 
+command -v ctags >/dev/null 2>&1 || 
+  { echo >&2 "ERROR: ctags is not installed. Aborting."; exit 1; }
+ 
+# Check if 'ctags-exuberant' is being used. 
+# That's our preferred ctags implementation.
+EXUBERANT_CTAGS_STR="Exuberant Ctags"
+if ( ctags --version  | grep "${EXUBERANT_CTAGS_STR}" 1>/dev/null 2>&1 ); then
+  echo "${EXUBERANT_CTAGS_STR} is our preferred ctags implementation.";
+  echo "You are using:";
+  echo "    $(ctags --version |  grep "${EXUBERANT_CTAGS_STR}") ";
+  echo;
+else
+  echo "Warning: You are not using ${EXUBERANT_CTAGS_STR}, our preferred ctags implementation.";
+  echo "    You may install ${EXUBERANT_CTAGS_STR} with the following command:";
+  echo "        sudo apt-get install exuberant-ctags.";
+  echo;
+fi
+
+
+# List of sub-directories and files that will be ignored. 
+# The sub-directories are indicated by regular expressions separated by spaces.
+EXCLUDE="*.svn* *.git* *.hg* *.bzr* *CVS* *RCS* *SCCS* .*log* .*Log*"
+EXCLUDE="$EXCLUDE tools obj mnt scripts *.sh libs apps"
+#echo EXCLUDE=$EXCLUDE
+
+
+IGNORE=
+for x in $EXCLUDE
+do
+  IGNORE="$IGNORE \( -name '$x' -prune \) -o"
+done
+
+FIND_CMD="find . $IGNORE -type d -print"
+#echo $FIND_CMD
+
+#eval makes an extra evaluation pass that removes the \ in front of ( and ) and removes the single quotes.
+DIRS=$(eval $FIND_CMD)
+
+# Remove all the previously generated tags files.
+find . -name "tags" -type f -exec rm '{}' \;
+
+
+for d in $DIRS
+do
+  if [ $d != "." ]; then
+    #echo $d
+    ( cd $d && `ctags --c++-kinds=+p --fields=+iaS --extra=+q .` )
+  fi
+done
+
+
+echo "Generating master ctag file at directory $PARENT_DIR"
+cd $PARENT_DIR
+ctags --file-scope=no -R --c++-kinds=+p --fields=+iaS --extra=+q --exclude="$EXCLUDE"
+
